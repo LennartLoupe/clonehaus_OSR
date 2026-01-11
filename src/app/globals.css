@@ -1,0 +1,50 @@
+:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  
+  /* Premium Dark Palette */
+  --card-bg: #171717;
+  --card-border: #262626;
+  --accent: #3b82f6; /* Blue-500 equivalent */
+  --accent-glow: rgba(59, 130, 246, 0.2);
+  
+  --grid-color: #262626;
+  
+  /* Status Colors */
+  --status-draft: #a3a3a3;
+  --status-active: #22c55e;
+  
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow: hidden; /* Canvas controls scroll */
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Utilities */
+.hidden { display: none; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.absolute { position: absolute; }
+.relative { position: relative; }
+.w-full { width: 100%; }
+.h-full { height: 100%; }

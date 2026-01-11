@@ -1,0 +1,62 @@
+This file defines:
+- Organization
+    - Domains
+    - Agents
+    - Relationships
+    - All authority metadata
+
+No randomness.
+No generators.
+Deterministic only.
+
+---
+
+## Interaction Rules
+
+    - Clicking a node highlights it
+        - Parent - child relationships are visually reinforced
+            - No drag - and - drop in Phase 0
+                - No editing anywhere
+
+Everything is ** read - only **.
+
+---
+
+## Visual Quality Bar
+
+This phase should feel:
+- Calm
+    - Controlled
+    - Enterprise - grade
+    - Intentional
+
+If a component feels “hacky,” it fails Phase 0.
+
+---
+
+## Exit Criteria(Phase 0 Is Done When)
+
+All of the following are true:
+
+-[] Org chart loads instantly
+    - [] All node types render correctly
+        - [] Structure View works
+            - [] AI Footprint View works
+                - [] Right - side panels exist for all node types
+                    - [] Visual hierarchy is obvious without explanation
+                        - [] No backend code exists
+                            - [] No TODOs visible in UI
+
+Only after this do we proceed to Phase 1.
+
+---
+
+## Phase 1 Preview(Not Implemented)
+
+Phase 1 will introduce:
+- Editable state
+    - Local persistence
+        - Authority inheritance logic
+            - First Runtime hooks
+
+Phase 0 must stand on its own before this begins.
