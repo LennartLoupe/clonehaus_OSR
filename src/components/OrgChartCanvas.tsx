@@ -1,97 +1,95 @@
 'use client';
 
-import React, { useState } from 'react';
-import clsx from 'clsx';
-import { Node } from './Node';
-import { ViewMode } from './ViewToggle';
+export type NodeType = 'ORGANIZATION' | 'DOMAIN' | 'AGENT';
 
 export interface NodeData {
     id: string;
-    type: 'ORGANIZATION' | 'DOMAIN' | 'AGENT';
     label: string;
-    status: 'DRAFT' | 'ACTIVE' | 'LOCKED' | 'READY';
-    metadata?: Record<string, any>;
+    type: NodeType;
     children?: NodeData[];
 }
 
 interface OrgChartCanvasProps {
     data: NodeData;
-    viewMode: ViewMode;
     selectedNodeId: string | null;
     onNodeSelect: (node: NodeData) => void;
-    onClearSelection?: () => void;
 }
 
 export function OrgChartCanvas({
     data,
-    viewMode,
     selectedNodeId,
     onNodeSelect,
-    onClearSelection
 }: OrgChartCanvasProps) {
     if (!data) {
         return (
-            <div className="w-full h-full flex items-center justify-center text-sm opacity-60">
-                No data loaded
+            <div style={{ color: 'white', padding: 20 }}>
+                OrgChartCanvas received no data.
             </div>
         );
     }
 
     return (
-        <div
-            className="w-full h-full overflow-auto bg-[var(--background)]"
-            onClick={(e) => {
-                if (e.target === e.currentTarget && onClearSelection) {
-                    onClearSelection();
-                }
-            }}
-        >
-            <div className="min-w-fit min-h-fit p-16 flex justify-center">
-                <Tree
-                    node={data}
-                    viewMode={viewMode}
-                    selectedNodeId={selectedNodeId}
-                    onSelect={onNodeSelect}
-                />
-            </div>
+        <div style={{ color: 'white' }}>
+            <TreeNode
+                node={data}
+                selectedNodeId={selectedNodeId}
+                onNodeSelect={onNodeSelect}
+            />
         </div>
     );
 }
 
-function Tree({
+function TreeNode({
     node,
-    viewMode,
     selectedNodeId,
-    onSelect
+    onNodeSelect,
 }: {
     node: NodeData;
-    viewMode: ViewMode;
     selectedNodeId: string | null;
-    onSelect: (n: NodeData) => void;
+    onNodeSelect: (node: NodeData) => void;
 }) {
-    const isSelected = node.id === selectedNodeId;
-    const children = node.children ?? [];
+    const isSelected = selectedNodeId === node.id;
 
     return (
-        <div className="flex flex-col items-center gap-6">
-            <Node
-                data={node}
-                viewMode={viewMode}
-                isSelected={isSelected}
-                isRelated={false}
-                isDeemphasized={false}
-                onClick={() => onSelect(node)}
-            />
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            {/* CLICKABLE NODE BOX */}
+            <div
+                onClick={() => {
+                    console.log('Clicked node:', node);
+                    onNodeSelect(node);
+                }}
+                style={{
+                    display: 'inline-block',
+                    padding: '12px 16px',
+                    border: '1px solid white',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    background: isSelected ? '#333' : '#000',
+                    marginBottom: 12,
+                    minWidth: 160,
+                }}
+            >
+                <div style={{ fontWeight: 600 }}>{node.label}</div>
+                <div style={{ fontSize: 12, opacity: 0.7 }}>{node.type}</div>
+            </div>
 
-            {children.length > 0 && (
-                <div className="flex gap-10">
-                    {children.map((child) => (
-                        <Tree
+            {/* CHILDREN */}
+            {node.children && node.children.length > 0 && (
+                <div
+                    style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: 24,
+                        marginTop: 16,
+                        flexWrap: 'wrap',
+                    }}
+                >
+                    {node.children.map((child) => (
+                        <TreeNode
                             key={child.id}
                             node={child}
-                            viewMode={viewMode}
                             selectedNodeId={selectedNodeId}
-                            onSelect={onSelect}
+                            onNodeSelect={onNodeSelect}
                         />
                     ))}
                 </div>

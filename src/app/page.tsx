@@ -1,40 +1,47 @@
 'use client';
 
 import { useState } from 'react';
-import { OrgChartCanvas, NodeData } from '@/components/OrgChartCanvas';
-import { ViewToggle, ViewMode } from '@/components/ViewToggle';
-
-const DUMMY_DATA: NodeData = {
-    id: 'org-1',
-    type: 'ORGANIZATION',
-    label: 'Acme Corporation',
-    status: 'DRAFT',
-    metadata: {},
-    children: [],
-};
+import { OrgChartCanvas } from '@/components/OrgChartCanvas';
+import { InspectorPanel } from '@/components/InspectorPanel';
+import { PHASE0_DATA } from '@/app/data/phase0.data';
+import { buildOrgTree } from '@/app/data/buildOrgTree';
+import { ViewMode } from '@/components/ViewToggle';
 
 export default function Home() {
-    const [viewMode, setViewMode] = useState<ViewMode>('STRUCTURE');
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const viewMode: ViewMode = 'STRUCTURE';
+
+    const treeData = buildOrgTree(PHASE0_DATA);
 
     return (
-        <main className="relative w-full h-screen bg-black text-white overflow-hidden">
-            {/* Top-right toggle */}
-            <div className="absolute top-6 right-6 z-50">
-                <ViewToggle
-                    currentMode={viewMode}
-                    onToggle={setViewMode}
+        <>
+            <div
+                onClick={(e) => {
+                    // Clear selection if clicking the background (not a node)
+                    if (e.target === e.currentTarget) {
+                        setSelectedNodeId(null);
+                    }
+                }}
+                style={{
+                    padding: 40,
+                    background: 'black',
+                    minHeight: '100vh',
+                }}
+            >
+                <h1 style={{ color: 'white', marginBottom: 20 }}>DEBUG VIEW</h1>
+
+                <OrgChartCanvas
+                    data={treeData}
+                    viewMode={viewMode}
+                    selectedNodeId={selectedNodeId}
+                    onNodeSelect={(node) => {
+                        console.log('Selected:', node);
+                        setSelectedNodeId(node.id);
+                    }}
                 />
             </div>
 
-            {/* Org Chart Canvas */}
-            <OrgChartCanvas
-                data={DUMMY_DATA}
-                viewMode={viewMode}
-                selectedNodeId={selectedNodeId}
-                onNodeSelect={(node) => setSelectedNodeId(node.id)}
-                onClearSelection={() => setSelectedNodeId(null)}
-            />
-        </main>
+            <InspectorPanel selectedNodeId={selectedNodeId} data={PHASE0_DATA} />
+        </>
     );
 }
