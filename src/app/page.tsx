@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { OrgChartCanvas } from '@/components/OrgChartCanvas';
-import { InspectorPanel } from '@/components/InspectorPanel';
+import { InspectorPanel, ExplanationMode } from '@/components/InspectorPanel';
 import { PHASE0_DATA } from '@/app/data/phase0.data';
 import { buildOrgTree } from '@/app/data/buildOrgTree';
 import { ViewMode } from '@/components/ViewToggle';
 
 export default function Home() {
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [explanationMode, setExplanationMode] = useState<ExplanationMode>('STANDARD');
     const viewMode: ViewMode = 'STRUCTURE';
 
     const treeData = buildOrgTree(PHASE0_DATA);
@@ -41,7 +42,12 @@ export default function Home() {
                 />
             </div>
 
-            <InspectorPanel selectedNodeId={selectedNodeId} data={PHASE0_DATA} />
+            <InspectorPanel
+                selectedNodeId={selectedNodeId}
+                data={PHASE0_DATA}
+                explanationMode={explanationMode}
+                onExplanationModeChange={setExplanationMode}
+            />
         </>
     );
 }
