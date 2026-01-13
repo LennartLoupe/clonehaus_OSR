@@ -12,6 +12,22 @@ import { deriveActionSurface, ActionState } from '@/logic/authority/deriveAction
 import { deriveDoActions, DoAction, DoActionState } from '@/logic/authority/deriveDoActions';
 import { deriveRuntimeVerdict, RuntimeVerdict } from '@/logic/authority/deriveRuntimeVerdict';
 import { deriveExecutionReadiness, ExecutionReadiness, ExecutionReadinessState } from '@/logic/authority/deriveExecutionReadiness';
+import {
+    StagedAction,
+    createStagedAction,
+    canStageAction,
+    approveStagedAction,
+    rejectStagedAction,
+    ApprovalIntent,
+    ApprovalScope,
+    createApprovalIntent,
+    PolicyChangeProposal,
+    derivePolicyChangeProposal,
+    confirmPolicyProposal,
+    dismissPolicyProposal,
+} from '@/logic/staging/stagedActions';
+import { ApprovalReviewPanel } from './ApprovalReviewPanel';
+import { PolicyImplicationsView } from './PolicyImplicationsView';
 
 export type ExplanationMode = 'MINIMAL' | 'STANDARD' | 'VERBOSE';
 
@@ -231,16 +247,123 @@ function AgentViewWithState({
     mode: ExplanationMode;
 }) {
     const [selectedDoActionId, setSelectedDoActionId] = useState<string | null>(null);
+    const [stagedActions, setStagedActions] = useState<StagedAction[]>([]);
+    const [approvalIntents, setApprovalIntents] = useState<ApprovalIntent[]>([]);
+    const [selectedStagedAction, setSelectedStagedAction] = useState<StagedAction | null>(null);
+    const [policyProposals, setPolicyProposals] = useState<PolicyChangeProposal[]>([]);
+
+    // Stage action handler
+    const handleStageAction = (
+        agent: Agent,
+        doAction: DoAction,
+        verdict: RuntimeVerdict,
+        readiness: ExecutionReadiness,
+        authority: AuthorityResult
+    ) => {
+        const staged = createStagedAction(agent, doAction, verdict, readiness, authority);
+        setStagedActions([...stagedActions, staged]);
+    };
+
+    // Approve action handler - opens approval review panel
+    const handleApproveAction = (actionId: string) => {
+        const action = stagedActions.find(a => a.id === actionId);
+        if (action) {
+            setSelectedStagedAction(action);
+        }
+    };
+
+    // Submit approval handler - creates intent and transitions state
+    const handleSubmitApproval = (
+        scope: ApprovalScope,
+        justification: string,
+        conditions?: string
+    ) => {
+        if (!selectedStagedAction) return;
+
+        // Create approval intent
+        const intent = createApprovalIntent(
+            selectedStagedAction,
+            scope,
+            justification,
+            conditions
+        );
+        setApprovalIntents([...approvalIntents, intent]);
+
+        // Transition staged action to APPROVED
+        setStagedActions(
+            stagedActions.map(action =>
+                action.id === selectedStagedAction.id
+                    ? approveStagedAction(action)
+                    : action
+            )
+        );
+
+        // Phase 4C: Derive policy proposal if scope is POLICY_CHANGE
+        if (scope === 'POLICY_CHANGE') {
+            const proposal = derivePolicyChangeProposal(intent);
+            if (proposal) {
+                setPolicyProposals([...policyProposals, proposal]);
+            }
+        }
+
+        // Close review panel
+        setSelectedStagedAction(null);
+    };
+
+    // Confirm policy proposal handler
+    const handleConfirmProposal = (proposalId: string) => {
+        setPolicyProposals(
+            policyProposals.map(p =>
+                p.proposalId === proposalId ? confirmPolicyProposal(p) : p
+            )
+        );
+    };
+
+    // Dismiss policy proposal handler
+    const handleDismissProposal = (proposalId: string) => {
+        setPolicyProposals(
+            policyProposals.map(p =>
+                p.proposalId === proposalId ? dismissPolicyProposal(p) : p
+            )
+        );
+    };
+
+    // Reject staged action handler
+    const handleRejectAction = (actionId: string, reason: string) => {
+        setStagedActions(
+            stagedActions.map(action =>
+                action.id === actionId ? rejectStagedAction(action, reason) : action
+            )
+        );
+    };
 
     return (
-        <AgentView
-            agent={agent}
-            domain={domain}
-            organization={organization}
-            mode={mode}
-            selectedDoActionId={selectedDoActionId}
-            onDoActionSelect={setSelectedDoActionId}
-        />
+        <>
+            {/* Phase 4B: Approval Review Panel */}
+            {selectedStagedAction && (
+                <ApprovalReviewPanel
+                    stagedAction={selectedStagedAction}
+                    onSubmit={handleSubmitApproval}
+                    onCancel={() => setSelectedStagedAction(null)}
+                />
+            )}
+
+            <AgentView
+                agent={agent}
+                domain={domain}
+                organization={organization}
+                mode={mode}
+                selectedDoActionId={selectedDoActionId}
+                onDoActionSelect={setSelectedDoActionId}
+                stagedActions={stagedActions}
+                onStageAction={handleStageAction}
+                onApproveAction={handleApproveAction}
+                onRejectAction={handleRejectAction}
+                policyProposals={policyProposals}
+                onConfirmProposal={handleConfirmProposal}
+                onDismissProposal={handleDismissProposal}
+            />
+        </>
     );
 }
 
@@ -251,6 +374,13 @@ function AgentView({
     mode,
     selectedDoActionId,
     onDoActionSelect,
+    stagedActions,
+    onStageAction,
+    onApproveAction,
+    onRejectAction,
+    policyProposals,
+    onConfirmProposal,
+    onDismissProposal,
 }: {
     agent: Agent;
     domain: Domain;
@@ -258,11 +388,47 @@ function AgentView({
     mode: ExplanationMode;
     selectedDoActionId: string | null;
     onDoActionSelect: (actionId: string | null) => void;
+    stagedActions: StagedAction[];
+    onStageAction: (
+        agent: Agent,
+        doAction: DoAction,
+        verdict: RuntimeVerdict,
+        readiness: ExecutionReadiness,
+        authority: AuthorityResult
+    ) => void;
+    onApproveAction: (actionId: string) => void;
+    onRejectAction: (actionId: string, reason: string) => void;
+    policyProposals: PolicyChangeProposal[];
+    onConfirmProposal: (proposalId: string) => void;
+    onDismissProposal: (proposalId: string) => void;
 }) {
     const authority = deriveAgentAuthority(organization, domain, agent);
 
     return (
         <div>
+            {/* Phase 4A: Staged Actions List */}
+            {stagedActions.length > 0 && (
+                <StagedActionsListView
+                    stagedActions={stagedActions}
+                    onApproveAction={onApproveAction}
+                    onRejectAction={onRejectAction}
+                />
+            )}
+
+            {/* Phase 4C: Policy Implications */}
+            {policyProposals.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                    {policyProposals.map(proposal => (
+                        <PolicyImplicationsView
+                            key={proposal.proposalId}
+                            proposal={proposal}
+                            onConfirm={onConfirmProposal}
+                            onDismiss={onDismissProposal}
+                        />
+                    ))}
+                </div>
+            )}
+
             <div style={styles.section}>
                 <div style={styles.name}>{agent.name}</div>
                 <div style={styles.type}>AGENT</div>
@@ -306,6 +472,8 @@ function AgentView({
                 domain={domain}
                 organization={organization}
                 selectedDoActionId={selectedDoActionId}
+                stagedActions={stagedActions}
+                onStageAction={onStageAction}
             />
         </div>
     );
@@ -550,12 +718,22 @@ function RuntimeVerdictView({
     domain,
     organization,
     selectedDoActionId,
+    stagedActions,
+    onStageAction,
 }: {
     agent: Agent;
     authority: AuthorityResult;
     domain: Domain;
     organization: Organization;
     selectedDoActionId: string | null;
+    stagedActions: StagedAction[];
+    onStageAction: (
+        agent: Agent,
+        doAction: DoAction,
+        verdict: RuntimeVerdict,
+        readiness: ExecutionReadiness,
+        authority: AuthorityResult
+    ) => void;
 }) {
     // Don't render if no action selected
     if (!selectedDoActionId) {
@@ -658,6 +836,8 @@ function RuntimeVerdictView({
                 verdict={verdict}
                 domain={domain}
                 organization={organization}
+                stagedActions={stagedActions}
+                onStageAction={onStageAction}
             />
         </div>
     );
@@ -674,6 +854,8 @@ function ExecutionReadinessView({
     verdict,
     domain,
     organization,
+    stagedActions,
+    onStageAction,
 }: {
     agent: Agent;
     doAction: DoAction;
@@ -681,6 +863,14 @@ function ExecutionReadinessView({
     verdict: RuntimeVerdict;
     domain: Domain;
     organization: Organization;
+    stagedActions: StagedAction[];
+    onStageAction: (
+        agent: Agent,
+        doAction: DoAction,
+        verdict: RuntimeVerdict,
+        readiness: ExecutionReadiness,
+        authority: AuthorityResult
+    ) => void;
 }) {
     // Derive execution readiness
     const readiness = deriveExecutionReadiness(agent, doAction, authority, verdict, domain, organization);
@@ -757,6 +947,87 @@ function ExecutionReadinessView({
             <div style={styles.executionSummary}>
                 {readiness.summary}
             </div>
+
+            {/* Phase 4A: Stage Action Button */}
+            {canStageAction(doAction, readiness) && !stagedActions.some(sa => sa.actionId === doAction.id && sa.state === 'STAGED') && (
+                <button
+                    style={styles.stageActionButton}
+                    onClick={() => onStageAction(agent, doAction, verdict, readiness, authority)}
+                >
+                    Stage Action
+                </button>
+            )}
+        </div>
+    );
+}
+
+// ============================================================================
+// STAGED ACTIONS LIST VIEW (Phase 4A)
+// ============================================================================
+
+function StagedActionsListView({
+    stagedActions,
+    onApproveAction,
+    onRejectAction,
+}: {
+    stagedActions: StagedAction[];
+    onApproveAction: (actionId: string) => void;
+    onRejectAction: (actionId: string, reason: string) => void;
+}) {
+    return (
+        <div style={styles.stagedActionsSection}>
+            <div style={styles.stagedActionsTitle}>Staged Actions ({stagedActions.length})</div>
+
+            {stagedActions.map(action => (
+                <div key={action.id} style={styles.stagedActionCard}>
+                    {/* State Badge */}
+                    <div
+                        style={{
+                            ...styles.stagedActionBadge,
+                            ...(action.state === 'STAGED' ? styles.stagedActionBadgeStaged : {}),
+                            ...(action.state === 'APPROVED' ? styles.stagedActionBadgeApproved : {}),
+                            ...(action.state === 'REJECTED' ? styles.stagedActionBadgeRejected : {}),
+                        }}
+                    >
+                        {action.state}
+                    </div>
+
+                    {/* Action Info */}
+                    <div style={styles.stagedActionInfo}>
+                        <div style={styles.stagedActionName}>
+                            {action.agentName} • {action.actionName}
+                        </div>
+                        <div style={styles.stagedActionTime}>
+                            Staged {new Date(action.stagedAt).toLocaleTimeString()}
+                        </div>
+                    </div>
+
+                    {/* State Transition Actions */}
+                    {action.state === 'STAGED' && (
+                        <div style={styles.stagedActionControls}>
+                            <button
+                                style={styles.approveButton}
+                                onClick={() => onApproveAction(action.id)}
+                            >
+                                Approve
+                            </button>
+                            <button
+                                style={styles.rejectButton}
+                                onClick={() => onRejectAction(action.id, 'Manually rejected')}
+                            >
+                                Reject
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Rejection Reason */}
+                    {action.state === 'REJECTED' && action.rejectionReason && (
+                        <div style={styles.rejectionReason}>
+                            Reason: {action.rejectionReason}
+                        </div>
+                    )}
+                </div>
+            ))}
         </div>
     );
 }
@@ -1199,5 +1470,116 @@ const styles = {
         color: '#a1a1aa', // Muted neutral (zinc-400 equivalent)
         lineHeight: '1.6',
         fontStyle: 'normal' as const,
+    },
+    // Phase 4A: Staging styles
+    stageActionButton: {
+        marginTop: 20,
+        width: '100%',
+        padding: '10px 16px',
+        background: '#2a2a2a',
+        color: '#999',
+        border: '1px solid #3a3a3a',
+        borderRadius: 4,
+        fontSize: '13px',
+        fontWeight: 500,
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+    },
+    stagedActionsSection: {
+        marginBottom: 24,
+        padding: 16,
+        background: '#0f0f0f',
+        border: '1px solid #2a2a2a',
+        borderRadius: 6,
+    },
+    stagedActionsTitle: {
+        fontSize: '12px',
+        textTransform: 'uppercase' as const,
+        color: '#777',
+        letterSpacing: '0.5px',
+        marginBottom: 16,
+        fontWeight: 500,
+    },
+    stagedActionCard: {
+        marginBottom: 12,
+        padding: 12,
+        background: '#1a1a1a',
+        border: '1px solid #2a2a2a',
+        borderRadius: 4,
+    },
+    stagedActionBadge: {
+        display: 'inline-block',
+        fontSize: '10px',
+        fontWeight: 700,
+        padding: '4px 8px',
+        borderRadius: 3,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.4px',
+        marginBottom: 8,
+    },
+    stagedActionBadgeStaged: {
+        background: '#2a2a2a',
+        color: '#999',
+        border: '1px solid #3a3a3a',
+    },
+    stagedActionBadgeApproved: {
+        background: '#1a3a2a',
+        color: '#6FAF8E',
+        border: '1px solid #2a4a3a',
+    },
+    stagedActionBadgeRejected: {
+        background: '#3a1a1a',
+        color: '#d97070',
+        border: '1px solid #4a2a2a',
+    },
+    stagedActionInfo: {
+        marginBottom: 12,
+    },
+    stagedActionName: {
+        fontSize: '14px',
+        color: '#ddd',
+        marginBottom: 4,
+        fontWeight: 500,
+    },
+    stagedActionTime: {
+        fontSize: '11px',
+        color: '#666',
+    },
+    stagedActionControls: {
+        display: 'flex',
+        gap: 8,
+        marginTop: 12,
+    },
+    approveButton: {
+        flex: 1,
+        padding: '8px 12px',
+        background: '#1a3a2a',
+        color: '#6FAF8E',
+        border: '1px solid #2a4a3a',
+        borderRadius: 3,
+        fontSize: '12px',
+        fontWeight: 500,
+        cursor: 'pointer',
+    },
+    rejectButton: {
+        flex: 1,
+        padding: '8px 12px',
+        background: '#3a1a1a',
+        color: '#d97070',
+        border: '1px solid #4a2a2a',
+        borderRadius: 3,
+        fontSize: '12px',
+        fontWeight: 500,
+        cursor: 'pointer',
+    },
+    rejectionReason: {
+        marginTop: 8,
+        padding: 8,
+        background: '#0a0a0a',
+        border: '1px solid #2a2a2a',
+        borderRadius: 3,
+        fontSize: '11px',
+        color: '#999',
+        fontStyle: 'italic' as const,
     },
 };
