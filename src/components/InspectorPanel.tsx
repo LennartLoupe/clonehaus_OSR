@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Phase0Data, Organization, Domain, Agent } from '@/app/data/types';
 import {
     deriveOrganizationAuthority,
@@ -8,6 +9,9 @@ import {
     AuthorityResult,
 } from '@/logic/authority/deriveAuthority';
 import { deriveActionSurface, ActionState } from '@/logic/authority/deriveActionSurface';
+import { deriveDoActions, DoAction, DoActionState } from '@/logic/authority/deriveDoActions';
+import { deriveRuntimeVerdict, RuntimeVerdict } from '@/logic/authority/deriveRuntimeVerdict';
+import { deriveExecutionReadiness, ExecutionReadiness, ExecutionReadinessState } from '@/logic/authority/deriveExecutionReadiness';
 
 export type ExplanationMode = 'MINIMAL' | 'STANDARD' | 'VERBOSE';
 
@@ -59,7 +63,7 @@ export function InspectorPanel({
                         />
                     )}
                     {nodeInfo.type === 'AGENT' && (
-                        <AgentView
+                        <AgentViewWithState
                             agent={nodeInfo.data as Agent}
                             domain={
                                 data.domains.find(
@@ -214,7 +218,8 @@ function DomainView({
 // AGENT VIEW
 // ============================================================================
 
-function AgentView({
+// AgentView with state management for Do Action selection
+function AgentViewWithState({
     agent,
     domain,
     organization,
@@ -224,6 +229,35 @@ function AgentView({
     domain: Domain;
     organization: Organization;
     mode: ExplanationMode;
+}) {
+    const [selectedDoActionId, setSelectedDoActionId] = useState<string | null>(null);
+
+    return (
+        <AgentView
+            agent={agent}
+            domain={domain}
+            organization={organization}
+            mode={mode}
+            selectedDoActionId={selectedDoActionId}
+            onDoActionSelect={setSelectedDoActionId}
+        />
+    );
+}
+
+function AgentView({
+    agent,
+    domain,
+    organization,
+    mode,
+    selectedDoActionId,
+    onDoActionSelect,
+}: {
+    agent: Agent;
+    domain: Domain;
+    organization: Organization;
+    mode: ExplanationMode;
+    selectedDoActionId: string | null;
+    onDoActionSelect: (actionId: string | null) => void;
 }) {
     const authority = deriveAgentAuthority(organization, domain, agent);
 
@@ -254,6 +288,25 @@ function AgentView({
 
             {/* Phase 2C.1: Action Surface */}
             <ActionSurfaceView agent={agent} authority={authority} domain={domain} organization={organization} />
+
+            {/* Phase 3A: Do Actions */}
+            <DoActionsView
+                agent={agent}
+                authority={authority}
+                domain={domain}
+                organization={organization}
+                selectedDoActionId={selectedDoActionId}
+                onDoActionSelect={onDoActionSelect}
+            />
+
+            {/* Phase 3B: Runtime Verdict */}
+            <RuntimeVerdictView
+                agent={agent}
+                authority={authority}
+                domain={domain}
+                organization={organization}
+                selectedDoActionId={selectedDoActionId}
+            />
         </div>
     );
 }
@@ -421,6 +474,289 @@ function ActionSurfaceView({
                     </div>
                 </div>
             ))}
+        </div>
+    );
+}
+
+// ============================================================================
+// DO ACTIONS VIEW (Phase 3A)
+// ============================================================================
+
+function DoActionsView({
+    agent,
+    authority,
+    domain,
+    organization,
+    selectedDoActionId,
+    onDoActionSelect,
+}: {
+    agent: Agent;
+    authority: AuthorityResult;
+    domain: Domain;
+    organization: Organization;
+    selectedDoActionId: string | null;
+    onDoActionSelect: (actionId: string | null) => void;
+}) {
+    const doActionSurface = deriveDoActions(agent, authority, domain, organization);
+
+    // Don't render if no actions
+    if (doActionSurface.actions.length === 0) {
+        return null;
+    }
+
+    return (
+        <div style={styles.section}>
+            <div style={styles.sectionTitle}>Do Actions</div>
+            <div style={styles.doActionsExplainer}>
+                What this agent could do if execution were permitted
+            </div>
+            {doActionSurface.actions.map((action) => {
+                const isSelected = selectedDoActionId === action.id;
+                return (
+                    <div
+                        key={action.id}
+                        style={{
+                            ...styles.doActionRow,
+                            ...(isSelected ? styles.doActionRowSelected : {}),
+                        }}
+                        title={action.reason}
+                        onClick={() => onDoActionSelect(isSelected ? null : action.id)}
+                    >
+                        <div style={styles.doActionLabel}>{action.verbPhrase}</div>
+                        <div
+                            style={{
+                                ...styles.doActionBadge,
+                                ...(action.state === 'ALLOWED' ? styles.doActionBadgeAllowed : {}),
+                                ...(action.state === 'RESTRICTED' ? styles.doActionBadgeRestricted : {}),
+                                ...(action.state === 'BLOCKED' ? styles.doActionBadgeBlocked : {}),
+                            }}
+                        >
+                            {action.state}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ============================================================================
+// RUNTIME VERDICT VIEW (Phase 3B)
+// ============================================================================
+
+function RuntimeVerdictView({
+    agent,
+    authority,
+    domain,
+    organization,
+    selectedDoActionId,
+}: {
+    agent: Agent;
+    authority: AuthorityResult;
+    domain: Domain;
+    organization: Organization;
+    selectedDoActionId: string | null;
+}) {
+    // Don't render if no action selected
+    if (!selectedDoActionId) {
+        return null;
+    }
+
+    // Get the selected Do Action
+    const doActionSurface = deriveDoActions(agent, authority, domain, organization);
+    const selectedAction = doActionSurface.actions.find(a => a.id === selectedDoActionId);
+
+    if (!selectedAction) {
+        return null;
+    }
+
+    // Derive runtime verdict
+    const verdict = deriveRuntimeVerdict(agent, selectedAction, authority, domain, organization);
+
+    // Map confidence to display labels
+    const confidenceLabel = verdict.decision.confidence === 'HIGH'
+        ? 'Clear outcome'
+        : 'Requires escalation';
+
+    // Map confidence to icon
+    const confidenceIcon = verdict.decision.confidence === 'HIGH'
+        ? '●' // Solid dot
+        : '◐'; // Half-filled dot
+
+    // Tooltip content
+    const confidenceTooltip = verdict.decision.confidence === 'HIGH'
+        ? 'The system has enough information to determine the result without ambiguity. This does not mean the action is approved or safe — only that the rules lead to a clear conclusion.'
+        : 'The system can partially assess this action but intentionally defers the final decision to a human or external process.';
+
+    return (
+        <div style={styles.section}>
+            <div style={styles.sectionTitle}>Runtime Verdict</div>
+
+            {/* Verdict Status */}
+            <div
+                style={{
+                    ...styles.verdictStatusBadge,
+                    ...(verdict.decision.status === 'ALLOWED' ? styles.verdictStatusAllowed : {}),
+                    ...(verdict.decision.status === 'BLOCKED' ? styles.verdictStatusBlocked : {}),
+                    ...(verdict.decision.status === 'ESCALATION_REQUIRED' ? styles.verdictStatusEscalation : {}),
+                }}
+            >
+                {verdict.decision.status.replace('_', ' ')}
+            </div>
+
+            {/* System Assessment (Confidence) */}
+            <div style={styles.verdictAssessmentSection}>
+                <div style={styles.verdictAssessmentLabel}>System assessment:</div>
+                <div style={styles.verdictAssessmentRow}>
+                    <span style={styles.verdictConfidenceIcon}>{confidenceIcon}</span>
+                    <span style={styles.verdictConfidenceLabel}>{confidenceLabel}</span>
+                    <span
+                        style={styles.verdictTooltipIcon}
+                        title={confidenceTooltip}
+                        aria-label={`About ${confidenceLabel}: ${confidenceTooltip}`}
+                    >
+                        ⓘ
+                    </span>
+                </div>
+            </div>
+
+            {/* Summary */}
+            <div style={styles.verdictSummary}>
+                {verdict.reasoning.summary}
+            </div>
+
+            {/* Applied Constraints */}
+            <div style={styles.verdictConstraintsTitle}>Applied Constraints</div>
+            {verdict.reasoning.appliedConstraints.map((constraint, index) => (
+                <div key={index} style={styles.verdictConstraintRow}>
+                    <div style={styles.verdictConstraintSource}>{constraint.source}</div>
+                    <div style={styles.verdictConstraintDescription}>{constraint.description}</div>
+                </div>
+            ))}
+
+            {/* Escalation Info */}
+            {verdict.escalation && (
+                <div style={styles.verdictEscalation}>
+                    <div style={styles.verdictEscalationTitle}>Escalation Required</div>
+                    <div style={styles.verdictEscalationText}>{verdict.escalation.reason}</div>
+                    <div style={styles.verdictEscalationText}>
+                        Expected approver: {verdict.escalation.expectedApproverRole}
+                    </div>
+                </div>
+            )}
+
+            {/* Execution Guarantee */}
+            <div style={styles.verdictGuarantee}>
+                Explanatory Only — No execution will occur
+            </div>
+
+            {/* Phase 3C: Execution Readiness */}
+            <ExecutionReadinessView
+                agent={agent}
+                doAction={selectedAction}
+                authority={authority}
+                verdict={verdict}
+                domain={domain}
+                organization={organization}
+            />
+        </div>
+    );
+}
+
+// ============================================================================
+// EXECUTION READINESS VIEW (Phase 3C)
+// ============================================================================
+
+function ExecutionReadinessView({
+    agent,
+    doAction,
+    authority,
+    verdict,
+    domain,
+    organization,
+}: {
+    agent: Agent;
+    doAction: DoAction;
+    authority: AuthorityResult;
+    verdict: RuntimeVerdict;
+    domain: Domain;
+    organization: Organization;
+}) {
+    // Derive execution readiness
+    const readiness = deriveExecutionReadiness(agent, doAction, authority, verdict, domain, organization);
+
+    return (
+        <div style={styles.executionSection}>
+            <div style={styles.executionTitle}>Execution Readiness</div>
+
+            {/* Readiness Badge */}
+            <div
+                style={{
+                    ...styles.executionBadge,
+                    ...(readiness.state === 'ELIGIBLE_AUTOMATIC' ? styles.executionBadgeAuto : {}),
+                    ...(readiness.state === 'ELIGIBLE_PENDING_APPROVAL' ? styles.executionBadgePending : {}),
+                    ...(readiness.state === 'NOT_ELIGIBLE' ? styles.executionBadgeNotEligible : {}),
+                    ...(readiness.state === 'BLOCKED_HARD' ? styles.executionBadgeBlocked : {}),
+                }}
+            >
+                {readiness.state.replace(/_/g, ' ')}
+            </div>
+
+            {/* Preconditions Checklist */}
+            <div style={styles.executionPreconditionsTitle}>Preconditions:</div>
+
+            <div style={styles.executionPreconditionRow}>
+                <span style={styles.executionCheckIcon}>
+                    {readiness.gates.authorityAlignment.passed ? '✓' : '✕'}
+                </span>
+                <span
+                    style={styles.executionPreconditionLabel}
+                    title={readiness.gates.authorityAlignment.reason}
+                >
+                    Authority Alignment
+                </span>
+            </div>
+
+            <div style={styles.executionPreconditionRow}>
+                <span style={styles.executionCheckIcon}>
+                    {readiness.gates.actionSurfaceCompatibility.passed ? '✓' : '✕'}
+                </span>
+                <span
+                    style={styles.executionPreconditionLabel}
+                    title={readiness.gates.actionSurfaceCompatibility.reason}
+                >
+                    Action Surface Compatibility
+                </span>
+            </div>
+
+            <div style={styles.executionPreconditionRow}>
+                <span style={styles.executionCheckIcon}>
+                    {readiness.gates.escalationResolution.passed ? '✓' : '✕'}
+                </span>
+                <span
+                    style={styles.executionPreconditionLabel}
+                    title={readiness.gates.escalationResolution.reason}
+                >
+                    Escalation Resolution
+                </span>
+            </div>
+
+            <div style={styles.executionPreconditionRow}>
+                <span style={styles.executionCheckIcon}>
+                    {readiness.gates.personaAlignment.passed ? '✓' : '✕'}
+                </span>
+                <span
+                    style={styles.executionPreconditionLabel}
+                    title={readiness.gates.personaAlignment.reason}
+                >
+                    Persona Alignment
+                </span>
+            </div>
+
+            {/* Summary */}
+            <div style={styles.executionSummary}>
+                {readiness.summary}
+            </div>
         </div>
     );
 }
@@ -618,5 +954,250 @@ const styles = {
         background: '#2a1a1a',
         color: '#999',
         border: '1px solid #3a2a2a',
+    },
+    // Phase 3A: Do Actions styles
+    doActionsExplainer: {
+        fontSize: '12px',
+        color: '#666',
+        marginBottom: '14px',
+        fontStyle: 'italic',
+        lineHeight: '1.5',
+    },
+    doActionRow: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '10px',
+        cursor: 'pointer',
+        opacity: 0.85,
+        padding: '8px',
+        borderRadius: 4,
+        border: '1px solid transparent',
+        transition: 'all 150ms ease',
+    },
+    doActionRowSelected: {
+        border: '1px solid #3a3a3a',
+        background: '#1a1a1a',
+        opacity: 1,
+    },
+    doActionLabel: {
+        fontSize: '14px',
+        color: '#ccc',
+    },
+    doActionBadge: {
+        fontSize: '10px',
+        fontWeight: 600,
+        padding: '3px 8px',
+        borderRadius: 3,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.3px',
+    },
+    doActionBadgeAllowed: {
+        background: '#1a3a2a',
+        color: '#6cc070',
+        border: '1px solid #2a4a3a',
+    },
+    doActionBadgeRestricted: {
+        background: '#3a2f1a',
+        color: '#daa520',
+        border: '1px solid #4a3f2a',
+    },
+    doActionBadgeBlocked: {
+        background: '#2a1a1a',
+        color: '#999',
+        border: '1px solid #3a2a2a',
+    },
+    // Phase 3B: Runtime Verdict styles
+    verdictStatusBadge: {
+        fontSize: '12px',
+        fontWeight: 700,
+        padding: '6px 12px',
+        borderRadius: 4,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.5px',
+        marginBottom: 20,
+        display: 'inline-block',
+    },
+    verdictStatusAllowed: {
+        background: '#1a3a2a',
+        color: '#6FAF8E', // Muted green-gray per spec
+        border: '1px solid #2a4a3a',
+    },
+    verdictStatusBlocked: {
+        background: '#3a1a1a',
+        color: '#d97070',
+        border: '1px solid #4a2a2a',
+    },
+    verdictStatusEscalation: {
+        background: '#3a2f1a',
+        color: '#C8A96A', // Muted amber-gray per spec
+        border: '1px solid #4a3f2a',
+    },
+    verdictAssessmentSection: {
+        marginBottom: 20,
+    },
+    verdictAssessmentLabel: {
+        fontSize: '11px',
+        color: '#888',
+        marginBottom: 8,
+        textTransform: 'none' as const,
+    },
+    verdictAssessmentRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+    },
+    verdictConfidenceIcon: {
+        fontSize: '16px',
+        color: '#999',
+        lineHeight: '1',
+    },
+    verdictConfidenceLabel: {
+        fontSize: '13px',
+        color: '#bbb',
+        fontWeight: 500,
+    },
+    verdictTooltipIcon: {
+        fontSize: '14px',
+        color: '#666',
+        cursor: 'help',
+        userSelect: 'none' as const,
+    },
+    verdictSummary: {
+        fontSize: '15px',
+        color: '#fff',
+        lineHeight: '1.6',
+        marginBottom: 20,
+        fontWeight: 500,
+    },
+    verdictConstraintsTitle: {
+        fontSize: '12px',
+        textTransform: 'uppercase' as const,
+        color: '#777',
+        letterSpacing: '0.5px',
+        marginBottom: 12,
+        fontWeight: 500,
+    },
+    verdictConstraintRow: {
+        marginBottom: 12,
+    },
+    verdictConstraintSource: {
+        fontSize: '10px',
+        textTransform: 'uppercase' as const,
+        color: '#666',
+        letterSpacing: '0.5px',
+        marginBottom: 4,
+    },
+    verdictConstraintDescription: {
+        fontSize: '13px',
+        color: '#bbb',
+        lineHeight: '1.5',
+    },
+    verdictEscalation: {
+        marginTop: 16,
+        padding: 12,
+        background: '#1a1a1a',
+        border: '1px solid #2a2a2a',
+        borderRadius: 4,
+    },
+    verdictEscalationTitle: {
+        fontSize: '11px',
+        textTransform: 'uppercase' as const,
+        color: '#daa520',
+        letterSpacing: '0.5px',
+        marginBottom: 8,
+        fontWeight: 600,
+    },
+    verdictEscalationText: {
+        fontSize: '13px',
+        color: '#ccc',
+        lineHeight: '1.5',
+        marginBottom: 4,
+    },
+    verdictGuarantee: {
+        marginTop: 20,
+        paddingTop: 16,
+        borderTop: '1px solid #2a2a2a',
+        fontSize: '11px',
+        color: '#666',
+        fontStyle: 'italic',
+        textAlign: 'center' as const,
+    },
+    // Phase 3C: Execution Readiness styles
+    executionSection: {
+        marginTop: 24,
+        paddingTop: 20,
+        borderTop: '1px solid #2a2a2a',
+    },
+    executionTitle: {
+        fontSize: '12px',
+        textTransform: 'uppercase' as const,
+        color: '#777',
+        letterSpacing: '0.5px',
+        marginBottom: 16,
+        fontWeight: 500,
+    },
+    executionBadge: {
+        fontSize: '11px',
+        fontWeight: 700,
+        padding: '5px 10px',
+        borderRadius: 3,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.4px',
+        marginBottom: 20,
+        display: 'inline-block',
+    },
+    executionBadgeAuto: {
+        background: '#1a3a2a',
+        color: '#6FAF8E', // Muted green
+        border: '1px solid #2a4a3a',
+    },
+    executionBadgePending: {
+        background: '#3a2f1a',
+        color: '#C8A96A', // Muted amber
+        border: '1px solid #4a3f2a',
+    },
+    executionBadgeNotEligible: {
+        background: '#2a2a2a',
+        color: '#666', // Gray
+        border: '1px solid #3a3a3a',
+    },
+    executionBadgeBlocked: {
+        background: '#3a1a1a',
+        color: '#d97070', // Muted red
+        border: '1px solid #4a2a2a',
+    },
+    executionPreconditionsTitle: {
+        fontSize: '11px',
+        color: '#888',
+        marginBottom: 12,
+        fontWeight: 500,
+    },
+    executionPreconditionRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 10,
+    },
+    executionCheckIcon: {
+        fontSize: '14px',
+        color: '#999',
+        fontWeight: 'bold',
+        width: 16,
+        textAlign: 'center' as const,
+    },
+    executionPreconditionLabel: {
+        fontSize: '13px',
+        color: '#bbb',
+        cursor: 'help',
+    },
+    executionSummary: {
+        marginTop: 16,
+        paddingTop: 14,
+        borderTop: '1px solid #2a2a2a',
+        fontSize: '13px',
+        color: '#a1a1aa', // Muted neutral (zinc-400 equivalent)
+        lineHeight: '1.6',
+        fontStyle: 'normal' as const,
     },
 };
