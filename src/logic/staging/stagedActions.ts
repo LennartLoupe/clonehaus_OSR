@@ -3,6 +3,7 @@ import { AuthorityResult } from '../authority/deriveAuthority';
 import { DoAction } from '../authority/deriveDoActions';
 import { RuntimeVerdict } from '../authority/deriveRuntimeVerdict';
 import { ExecutionReadiness } from '../authority/deriveExecutionReadiness';
+import { LearnedPolicy, deriveLearnedPolicy } from '../policy/learnedPolicy';
 
 /**
  * Execution Staging System (Phase 4A)
@@ -177,6 +178,9 @@ export interface PolicyChangeProposal {
     status: ProposalStatus;
     confirmedAt?: string;
     dismissedAt?: string;
+
+    // Phase 5A: Learned Policy (if derived)
+    learnedPolicyId?: string;    // ID of derived LearnedPolicy (if successful)
 }
 
 // ============================================================================
@@ -597,17 +601,29 @@ export function derivePolicyChangeProposal(
  * 
  * CRITICAL: NO POLICY APPLICATION
  * This only marks the proposal as CONFIRMED. It does NOT apply changes.
+ * 
+ * Phase 5A: Triggers policy learning derivation.
  */
 export function confirmPolicyProposal(proposal: PolicyChangeProposal): PolicyChangeProposal {
     if (proposal.status !== 'PROPOSED') {
         throw new Error('Can only confirm PROPOSED proposals');
     }
 
-    return {
+    const confirmed: PolicyChangeProposal = {
         ...proposal,
-        status: 'CONFIRMED',
+        status: 'CONFIRMED' as const,
         confirmedAt: new Date().toISOString(),
     };
+
+    // Phase 5A: Try to derive learned policy
+    const learnedPolicy = tryDeriveLearnedPolicy(confirmed);
+    if (learnedPolicy) {
+        confirmed.learnedPolicyId = learnedPolicy.policyId;
+        // Store in memory (Phase 5A - in-memory storage)
+        learnedPoliciesStore.push(learnedPolicy);
+    }
+
+    return confirmed;
 }
 
 /**
@@ -625,4 +641,57 @@ export function dismissPolicyProposal(proposal: PolicyChangeProposal): PolicyCha
         status: 'DISMISSED',
         dismissedAt: new Date().toISOString(),
     };
+}
+
+// ============================================================================
+// PHASE 5A: LEARNED POLICY STORAGE
+// ============================================================================
+
+/**
+ * In-memory storage for learned policies (Phase 5A).
+ * 
+ * Future phases may persist to database, but for Phase 5A we use
+ * in-memory storage to demonstrate the concept without persistence complexity.
+ */
+const learnedPoliciesStore: LearnedPolicy[] = [];
+
+/**
+ * Try to derive a learned policy from a confirmed proposal.
+ * 
+ * CRITICAL: NO EXECUTION
+ * This function creates a memory record only. No execution, no application.
+ * 
+ * @param proposal - CONFIRMED PolicyChangeProposal
+ * @returns LearnedPolicy or null if derivation fails
+ */
+export function tryDeriveLearnedPolicy(proposal: PolicyChangeProposal): LearnedPolicy | null {
+    try {
+        return deriveLearnedPolicy(proposal);
+    } catch (error) {
+        console.error('Failed to derive learned policy:', error);
+        return null;
+    }
+}
+
+/**
+ * Get all learned policies from in-memory store.
+ * 
+ * Returns a frozen copy to prevent mutation of the store.
+ */
+export function getAllLearnedPolicies(): ReadonlyArray<LearnedPolicy> {
+    return Object.freeze([...learnedPoliciesStore]);
+}
+
+/**
+ * Get a specific learned policy by ID.
+ */
+export function getLearnedPolicyById(id: string): LearnedPolicy | null {
+    return learnedPoliciesStore.find(p => p.policyId === id) ?? null;
+}
+
+/**
+ * Clear all learned policies (for testing/reset only).
+ */
+export function clearLearnedPolicies(): void {
+    learnedPoliciesStore.length = 0;
 }

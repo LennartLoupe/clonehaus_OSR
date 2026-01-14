@@ -77,7 +77,19 @@ export function PolicyImplicationsView({ proposal, onConfirm, onDismiss }: Polic
             {/* Status Display */}
             {proposal.status === 'CONFIRMED' && (
                 <div style={styles.statusConfirmed}>
-                    Proposal confirmed. Ready for future phases.
+                    {proposal.learnedPolicyId ? (
+                        <>
+                            ✓ Proposal confirmed and policy learned.
+                            <div style={styles.policyIdNote}>
+                                Policy ID: {proposal.learnedPolicyId}
+                            </div>
+                            <div style={styles.inertReminder}>
+                                The learned policy is a memory record and does not affect active system behavior.
+                            </div>
+                        </>
+                    ) : (
+                        'Proposal confirmed. Ready for future phases.'
+                    )}
                 </div>
             )}
             {proposal.status === 'DISMISSED' && (
@@ -243,6 +255,18 @@ const styles = {
         fontSize: '12px',
         color: '#6FAF8E',
         textAlign: 'center' as const,
+    },
+    policyIdNote: {
+        marginTop: 8,
+        fontSize: '10px',
+        color: '#5a9a7a',
+        fontFamily: 'monospace',
+    },
+    inertReminder: {
+        marginTop: 8,
+        fontSize: '10px',
+        color: '#5a9a7a',
+        fontStyle: 'italic' as const,
     },
     statusDismissed: {
         marginTop: 16,
