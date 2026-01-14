@@ -65,12 +65,12 @@ export function ApprovalReviewPanel({ stagedAction, onSubmit, onCancel }: Approv
 
                 {/* Runtime Verdict Snapshot */}
                 <Section title="RUNTIME VERDICT">
-                    <InfoRow label="Decision" value={verdict.decision.verdict} />
+                    <InfoRow label="Decision" value={verdict.decision.status} />
                     <InfoRow
                         label="Confidence"
                         value={verdict.decision.confidence === 'HIGH' ? 'Clear outcome' : 'Requires escalation'}
                     />
-                    <InfoRow label="Reason" value={verdict.decision.reason} />
+                    <InfoRow label="Reason" value={verdict.reasoning.summary} />
                 </Section>
 
                 {/* Execution Readiness Snapshot */}

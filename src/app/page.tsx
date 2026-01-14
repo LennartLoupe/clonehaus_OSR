@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { OrgChartCanvas } from '@/components/OrgChartCanvas';
 import { InspectorPanel, ExplanationMode } from '@/components/InspectorPanel';
 import { PHASE0_DATA } from '@/app/data/phase0.data';
 import { buildOrgTree } from '@/app/data/buildOrgTree';
 import { ViewMode } from '@/components/ViewToggle';
 import PolicyExplorerPage from '@/app/policies/page';
+import { initializePersonaIdentityMappings } from '@/logic/persona/personaIdentityMapping';
 
 export default function Home() {
     // Phase 6B: View toggle state (Structure | Policies)
@@ -15,6 +16,11 @@ export default function Home() {
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [explanationMode, setExplanationMode] = useState<ExplanationMode>('STANDARD');
     const viewMode: ViewMode = 'STRUCTURE';
+
+    // Phase 7C: Initialize persona identity mappings
+    useEffect(() => {
+        initializePersonaIdentityMappings();
+    }, []);
 
     const treeData = buildOrgTree(PHASE0_DATA);
 
@@ -61,7 +67,6 @@ export default function Home() {
 
                         <OrgChartCanvas
                             data={treeData}
-                            viewMode={viewMode}
                             selectedNodeId={selectedNodeId}
                             onNodeSelect={(node) => {
                                 console.log('Selected:', node);

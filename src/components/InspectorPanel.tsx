@@ -28,6 +28,10 @@ import {
 } from '@/logic/staging/stagedActions';
 import { ApprovalReviewPanel } from './ApprovalReviewPanel';
 import { PolicyImplicationsView } from './PolicyImplicationsView';
+import { PersonaIdentitySection } from './persona/PersonaIdentitySection';
+import { PersonaComparisonModal } from './persona/PersonaComparisonModal';
+import { getPersonaIdentityForAgent, initializePersonaIdentityMappings } from '@/logic/persona/personaIdentityMapping';
+import { getAllPersonaIdentities } from '@/logic/persona/personaIdentity';
 
 export type ExplanationMode = 'MINIMAL' | 'STANDARD' | 'VERBOSE';
 
@@ -251,6 +255,7 @@ function AgentViewWithState({
     const [approvalIntents, setApprovalIntents] = useState<ApprovalIntent[]>([]);
     const [selectedStagedAction, setSelectedStagedAction] = useState<StagedAction | null>(null);
     const [policyProposals, setPolicyProposals] = useState<PolicyChangeProposal[]>([]);
+    const [showComparisonModal, setShowComparisonModal] = useState(false);
 
     // Stage action handler
     const handleStageAction = (
@@ -348,6 +353,14 @@ function AgentViewWithState({
                 />
             )}
 
+            {/* Phase 7C: Persona Comparison Modal */}
+            {showComparisonModal && (
+                <PersonaComparisonModal
+                    identities={getAllPersonaIdentities().filter(id => id !== null)}
+                    onClose={() => setShowComparisonModal(false)}
+                />
+            )}
+
             <AgentView
                 agent={agent}
                 domain={domain}
@@ -362,6 +375,7 @@ function AgentViewWithState({
                 policyProposals={policyProposals}
                 onConfirmProposal={handleConfirmProposal}
                 onDismissProposal={handleDismissProposal}
+                onShowComparison={() => setShowComparisonModal(true)}
             />
         </>
     );
@@ -381,6 +395,7 @@ function AgentView({
     policyProposals,
     onConfirmProposal,
     onDismissProposal,
+    onShowComparison,
 }: {
     agent: Agent;
     domain: Domain;
@@ -401,6 +416,7 @@ function AgentView({
     policyProposals: PolicyChangeProposal[];
     onConfirmProposal: (proposalId: string) => void;
     onDismissProposal: (proposalId: string) => void;
+    onShowComparison: () => void;
 }) {
     const authority = deriveAgentAuthority(organization, domain, agent);
 
@@ -451,6 +467,9 @@ function AgentView({
 
             {/* Authority Explanation (Mode-Aware) */}
             <AuthorityExplanation authority={authority} mode={mode} />
+
+            {/* Phase 7C: Persona Identity */}
+            <PersonaIdentitySectionWrapper agentId={agent.id} onShowComparison={onShowComparison} />
 
             {/* Phase 2C.1: Action Surface */}
             <ActionSurfaceView agent={agent} authority={authority} domain={domain} organization={organization} />
@@ -607,6 +626,38 @@ function extractMainConstraint(detail: string): string {
         return 'advisory only';
     }
     return 'restricted';
+}
+
+
+// ============================================================================
+// PERSONA IDENTITY SECTION WRAPPER (Phase 7C)
+// ============================================================================
+
+function PersonaIdentitySectionWrapper({
+    agentId,
+    onShowComparison,
+}: {
+    agentId: string;
+    onShowComparison: () => void;
+}) {
+    const identity = getPersonaIdentityForAgent(agentId);
+    
+    if (!identity) {
+        // No identity defined - show placeholder
+        return (
+            <div style={styles.section}>
+                <div style={styles.sectionTitle}>PERSONA IDENTITY</div>
+                <div style={styles.contextText}>No identity defined for this agent.</div>
+            </div>
+        );
+    }
+    
+    return (
+        <PersonaIdentitySection
+            identity={identity}
+            onCompareClick={onShowComparison}
+        />
+    );
 }
 
 // ============================================================================
