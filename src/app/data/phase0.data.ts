@@ -6,7 +6,8 @@ export const PHASE0_DATA: Phase0Data = {
         name: 'Nebula Industries AI',
         status: 'DRAFT',
         authorityCeiling: 3,
-        escalationDefault: 'HUMAN',
+        globalActions: ['READ', 'WRITE', 'EXECUTE', 'ESCALATE'],
+        escalationBaseline: 'HUMAN_SENSITIVE',
         communicationPosture: 'BALANCED'
     },
     domains: [
@@ -17,7 +18,10 @@ export const PHASE0_DATA: Phase0Data = {
             mission: 'Ensure accuracy and compliance in automated financial reporting.',
             status: 'READY',
             authorityCeiling: 2,
-            allowedActionCategories: ['Report Generation', 'Data Reconciliation', 'Fraud Detection']
+            allowedActionCategories: ['Report Generation', 'Data Reconciliation', 'Fraud Detection'],
+            scope: 'Financial reporting and compliance audit.',
+            escalationPosture: 'HUMAN_SENSITIVE',
+            constraints: ['All discrepancy reports require approval']
         },
         {
             id: 'dom-cust',
@@ -26,7 +30,10 @@ export const PHASE0_DATA: Phase0Data = {
             mission: 'Deliver responsive and empathetic support across digital channels.',
             status: 'DRAFT',
             authorityCeiling: 1,
-            allowedActionCategories: ['Inquiry Response', 'Ticket Triage', 'Sentiment Analysis']
+            allowedActionCategories: ['Inquiry Response', 'Ticket Triage', 'Sentiment Analysis'],
+            scope: 'Customer support and sentiment tracking.',
+            escalationPosture: 'ALWAYS_AUTO',
+            constraints: ['No access to billing data']
         },
         {
             id: 'dom-tech',
@@ -35,7 +42,10 @@ export const PHASE0_DATA: Phase0Data = {
             mission: 'Maintain system stability and optimize resource allocation.',
             status: 'DRAFT',
             authorityCeiling: 3,
-            allowedActionCategories: ['Log Analysis', 'Resource Scaling', 'Alert Management']
+            allowedActionCategories: ['Log Analysis', 'Resource Scaling', 'Alert Management'],
+            scope: 'System health monitoring and scaling.',
+            escalationPosture: 'HUMAN_SENSITIVE',
+            constraints: ['Production scaling requires limits']
         }
     ],
     agents: [

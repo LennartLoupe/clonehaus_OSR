@@ -24,12 +24,77 @@ export interface AuthorityReasonStep {
     detail: string;
 }
 
+export interface DoAction {
+    actionName: string;
+    verdict: 'ALLOWED' | 'BLOCKED' | 'ESCALATION_REQUIRED';
+    reasons: string[];
+}
+
 export interface AuthorityResult {
     effectiveAuthorityLevel: number;
     authoritySourcePath: AuthoritySourcePathEntry[];
     blockedActions: string[];
     reasoning: AuthorityReasonStep[];  // T5: Explanation layer
+    doActions: DoAction[]; // Runtime list of specific actions and verdicts
 }
+
+// ============================================================================
+// HELPER: CALCULATE DO ACTIONS
+// ============================================================================
+
+function calculateDoActions(effectiveLevel: number, source: 'ORG' | 'DOMAIN' | 'AGENT', blockedReasons: string[] = []): DoAction[] {
+    // Define standard Actions and their required authority thresholds
+    const standardActions = [
+        { name: 'Speak / Reply', minLevel: 0 },
+        { name: 'Search Knowledge', minLevel: 0 },
+        { name: 'Propose Plan', minLevel: 1 },
+        { name: 'Execute Read-Only', minLevel: 1 },
+        { name: 'Execute Transaction', minLevel: 2 },
+        { name: 'Modify System Config', minLevel: 3 }
+    ];
+
+    return standardActions.map(action => {
+        let verdict: 'ALLOWED' | 'BLOCKED' | 'ESCALATION_REQUIRED' = 'ALLOWED';
+        const reasons: string[] = [];
+
+        // 1. Check Authority Level
+        if (effectiveLevel < action.minLevel) {
+            verdict = 'BLOCKED';
+            reasons.push(`Effective Authority Level (${effectiveLevel}) is below required (${action.minLevel}).`);
+        }
+
+        // 2. Check Explicit Blocked Reasons (from higher levels)
+        if (blockedReasons.length > 0) {
+            // For simplicity in Phase A, we assume general blocks apply to high-risk actions
+            // or we just list them as context constraints.
+            // If we had specific action-based blocks, we'd check them here.
+
+            // If broadly blocked (e.g. READ-only surface), block WRITE actions
+            const isWriteObject = action.name.includes('Transaction') || action.name.includes('Modify');
+            const readOnlyBlock = blockedReasons.some(r => r.includes('READ-only'));
+
+            if (isWriteObject && readOnlyBlock) {
+                verdict = 'BLOCKED';
+                reasons.push('Blocked by READ-only constraint.');
+            }
+        }
+
+        // 3. Escalation Logic (Mock for Phase A)
+        // If it's allowed but borderline, or if specific flags exist, require escalation.
+        // For now, let's say Level 2 actions require escalation if we are strictly level 2 (cautious).
+        if (verdict === 'ALLOWED' && action.minLevel === effectiveLevel && action.minLevel >= 2) {
+            verdict = 'ESCALATION_REQUIRED';
+            reasons.push('High-stakes action requires confirmation at this authority level.');
+        }
+
+        return {
+            actionName: action.name,
+            verdict,
+            reasons: reasons.length > 0 ? reasons : ['Allowed by sufficient authority.']
+        };
+    });
+}
+
 
 // ============================================================================
 // ORGANIZATION AUTHORITY
@@ -73,11 +138,14 @@ export function deriveOrganizationAuthority(org: Organization): AuthorityResult 
         },
     ];
 
+    const doActions = calculateDoActions(effectiveAuthorityLevel, 'ORG', blockedActions);
+
     return {
         effectiveAuthorityLevel,
         authoritySourcePath,
         blockedActions,
         reasoning,
+        doActions
     };
 }
 
@@ -152,11 +220,14 @@ export function deriveDomainAuthority(org: Organization, domain: Domain): Author
         });
     }
 
+    const doActions = calculateDoActions(effectiveAuthorityLevel, 'DOMAIN', blockedActions);
+
     return {
         effectiveAuthorityLevel,
         authoritySourcePath,
         blockedActions,
         reasoning,
+        doActions
     };
 }
 
@@ -303,10 +374,13 @@ export function deriveAgentAuthority(
 
     reasoning.push(agentReason);
 
+    const doActions = calculateDoActions(effectiveAuthorityLevel, 'AGENT', blockedActions);
+
     return {
         effectiveAuthorityLevel,
         authoritySourcePath,
         blockedActions,
         reasoning,
+        doActions
     };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { OrgChartCanvas } from '@/components/OrgChartCanvas';
 import { InspectorPanel, ExplanationMode } from '@/components/InspectorPanel';
 import { PHASE0_DATA } from '@/app/data/phase0.data';
@@ -8,6 +8,7 @@ import { buildOrgTree } from '@/app/data/buildOrgTree';
 import { ViewMode } from '@/components/ViewToggle';
 import PolicyExplorerPage from '@/app/policies/page';
 import { initializePersonaIdentityMappings } from '@/logic/persona/personaIdentityMapping';
+import { useStructureStore } from '@/state/structureStore';
 
 export default function Home() {
     // Phase 6B: View toggle state (Structure | Policies)
@@ -17,12 +18,28 @@ export default function Home() {
     const [explanationMode, setExplanationMode] = useState<ExplanationMode>('STANDARD');
     const viewMode: ViewMode = 'STRUCTURE';
 
+    // Phase A: Structure State
+    const {
+        data: structureData,
+        moveAgent,
+        addDomain,
+        deleteDomain,
+        addAgent,
+        deleteAgent
+    } = useStructureStore(PHASE0_DATA);
+
+    // Compute tree from dynamic structure data (Needed if Inspector still uses recursive tree, 
+    // although InspectorPanel mainly uses ID lookup. We keep this for compatibility if any other component needs tree).
+    // Actually, InspectorPanel uses `data` prop which is Phase0Data (flat), so treeData isn't strictly used by Inspector.
+    // However, we passed `treeData` to `OrgChartCanvas` previously. 
+    // In Phase A.2 Board Layout, `OrgChartCanvas` now ignores `data` (tree) and uses `lookupData` (flat).
+    // So `treeData` is legacy here but harmless.
+    const treeData = useMemo(() => buildOrgTree(structureData), [structureData]);
+
     // Phase 7C: Initialize persona identity mappings
     useEffect(() => {
         initializePersonaIdentityMappings();
     }, []);
-
-    const treeData = buildOrgTree(PHASE0_DATA);
 
     return (
         <>
@@ -51,33 +68,36 @@ export default function Home() {
             {activeView === 'structure' ? (
                 <>
                     <div
-                        onClick={(e) => {
-                            // Clear selection if clicking the background (not a node)
-                            if (e.target === e.currentTarget) {
-                                setSelectedNodeId(null);
-                            }
+                        onClick={() => {
+                            // Clear selection when clicking background (nodes stop propagation)
+                            setSelectedNodeId(null);
                         }}
                         style={{
                             padding: 40,
                             background: 'black',
-                            minHeight: 'calc(100vh - 100px)',
+                            height: 'calc(100vh - 100px)', // Fixed height for board scroll
+                            overflow: 'hidden' // Board has internal scroll
                         }}
                     >
-                        <h1 style={{ color: 'white', marginBottom: 20 }}>DEBUG VIEW</h1>
-
+                        {/* Phase A.2: Governance Board Canvas */}
                         <OrgChartCanvas
-                            data={treeData}
+                            lookupData={structureData} // Dynamic lookup for authority & rendering
                             selectedNodeId={selectedNodeId}
                             onNodeSelect={(node) => {
                                 console.log('Selected:', node);
                                 setSelectedNodeId(node.id);
                             }}
+                            onMoveAgent={moveAgent}
+                            onAddDomain={addDomain}
+                            onDeleteDomain={deleteDomain}
+                            onAddAgent={addAgent}
+                            onDeleteAgent={deleteAgent}
                         />
                     </div>
 
                     <InspectorPanel
                         selectedNodeId={selectedNodeId}
-                        data={PHASE0_DATA}
+                        data={structureData} // Phase A: Inspector reflects dynamic structure
                         explanationMode={explanationMode}
                         onExplanationModeChange={setExplanationMode}
                     />

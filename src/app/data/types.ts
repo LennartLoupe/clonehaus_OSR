@@ -3,7 +3,9 @@ export interface Organization {
     name: string;
     status: 'DRAFT' | 'LOCKED';
     authorityCeiling: number;
-    escalationDefault: 'AUTO' | 'HUMAN';
+    // Phase 8A: Constitutional definitions
+    globalActions: string[];
+    escalationBaseline: 'ALWAYS_AUTO' | 'HUMAN_SENSITIVE' | 'ALWAYS_HUMAN';
     communicationPosture: 'FORMAL' | 'BALANCED' | 'FRIENDLY';
 }
 
@@ -15,6 +17,10 @@ export interface Domain {
     status: 'DRAFT' | 'READY';
     authorityCeiling: number;
     allowedActionCategories: string[];
+    // Phase 8B: Studio Configuration
+    scope: string;
+    escalationPosture: 'ALWAYS_AUTO' | 'HUMAN_SENSITIVE' | 'ALWAYS_HUMAN';
+    constraints: string[];
 }
 
 export interface Agent {
